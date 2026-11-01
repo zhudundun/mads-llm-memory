@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A Memory Layer for LLM Data-Science Agents — Project Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* Warm paper-and-ink editorial palette.
+     Lora (serif) for prose & headings; DM Sans (sans) for UI text, labels, and metadata. */
+  :root{
+    --paper:#f5f0e8; --paper2:#ede8df; --paper3:#e3dccf;
+    --ink:#2c2416; --ink2:#6b6050; --ink3:#a09080;
+    --red:#c8442a; --gold:#b8952a; --sage:#4a7060;
+    --line:rgba(0,0,0,0.10); --line-soft:rgba(0,0,0,0.06);
+    --r:4px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html{scroll-behavior:smooth}
+  body{background:var(--paper2);color:var(--ink);
+    font:16px/1.78 'Lora',Georgia,'Times New Roman',serif;
+    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow-x:hidden}
+  body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")}
+
+  a{color:var(--sage);text-decoration:none;border-bottom:1px solid rgba(74,112,96,0.3);
+    transition:color .2s, border-color .2s}
+  a:hover{color:var(--red);border-bottom-color:var(--red)}
+  strong{font-weight:500;color:var(--ink)} em{font-style:italic}
+
+  .wrap{max-width:880px;margin:0 auto;padding:0 28px}
+
+  header.hero{padding:64px 0 44px;border-bottom:1px solid var(--line-soft);
+    background:radial-gradient(ellipse at 25% 0%,#ede5d0,var(--paper2) 70%)}
+  .tag{display:inline-block;font-family:'DM Sans',sans-serif;
+    font-size:11px;font-weight:400;letter-spacing:0.18em;text-transform:uppercase;
+    color:var(--ink3);margin-bottom:26px}
+  h1{font-family:'Lora',serif;font-weight:400;
+    font-size:clamp(34px,5.5vw,48px);line-height:1.18;letter-spacing:-0.018em;
+    margin:0 0 12px;color:var(--ink)}
+  h1 .sub{display:block;color:var(--ink2);font-weight:400;font-style:italic;font-size:0.62em;margin-top:6px}
+  .lede{color:var(--ink2);font-size:17.5px;line-height:1.72;max-width:700px;margin:14px 0}
+  .lede strong{color:var(--ink);font-weight:500}
+  .lede a{color:var(--ink);border-bottom-color:rgba(44,36,22,0.35)}
+  .lede a:hover{color:var(--red);border-bottom-color:var(--red)}
+  .meta{font-family:'DM Sans',sans-serif;font-size:12px;font-weight:300;
+    color:var(--ink3);letter-spacing:0.04em;margin-top:24px;line-height:1.65}
+  .meta strong{color:var(--ink2);font-weight:500}
+
+  nav.toc{position:sticky;top:0;z-index:5;
+    background:rgba(237,232,223,0.93);backdrop-filter:blur(8px) saturate(1.05);
+    border-bottom:1px solid var(--line-soft);padding:12px 0}
+  nav.toc .wrap{display:flex;gap:20px;flex-wrap:wrap}
+  nav.toc a{font-family:'DM Sans',sans-serif;font-size:12px;font-weight:400;
+    letter-spacing:0.04em;color:var(--ink3);border-bottom:none}
+  nav.toc a:hover{color:var(--ink);border-bottom:none}
+
+  section{padding:52px 0;border-bottom:1px solid var(--line-soft)}
+  section .subtitle{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:300;
+    font-style:italic;color:var(--ink2);margin:.2em 0 24px;letter-spacing:0.01em}
+
+  h2{font-family:'Lora',serif;font-weight:500;font-size:28px;line-height:1.25;
+    margin:0 0 4px;letter-spacing:-0.008em;color:var(--ink)}
+  h2 .n{font-family:'Lora',serif;font-style:italic;font-weight:500;color:var(--gold);
+    font-variant-numeric:tabular-nums;margin-right:14px}
+  h3{font-family:'Lora',serif;font-weight:500;font-size:19px;color:var(--ink);
+    margin:30px 0 8px;letter-spacing:-0.005em}
+  h4{font-family:'Lora',serif;font-weight:500;font-size:16px;color:var(--ink);
+    margin:22px 0 6px}
+
+  p{margin:12px 0}
+  ul,ol{margin:12px 0;padding-left:1.4em}
+  li{margin:5px 0}
+
+  .muted{color:var(--ink3)} .small{font-size:13px}
+  em.note{color:var(--ink2);font-style:italic}
+
+  .grid{display:grid;gap:14px}
+  .g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:760px){.g3,.g2{grid-template-columns:1fr}}
+
+  .card{background:var(--paper);border:1px solid var(--line-soft);border-radius:var(--r);
+    padding:18px 18px 16px;box-shadow:0 1px 2px rgba(0,0,0,0.03)}
+  .card h4{margin:0 0 6px;font-family:'Lora',serif;font-size:15.5px;font-weight:500}
+
+  .kicker{font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:400;
+    letter-spacing:0.16em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px}
+  .stat{font-family:'Lora',serif;font-size:30px;font-weight:500;
+    letter-spacing:-0.02em;color:var(--ink);line-height:1.15}
+  .stat.good{color:var(--sage)} .stat.bad{color:var(--red)} .stat.warn{color:var(--gold)}
+
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px;
+    background:var(--paper);border:1px solid var(--line-soft);border-radius:var(--r);
+    overflow:hidden;font-variant-numeric:tabular-nums}
+  th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{background:var(--paper3);font-family:'DM Sans',sans-serif;
+    font-size:11.5px;font-weight:500;text-transform:uppercase;letter-spacing:0.08em;
+    color:var(--ink2)}
+  td{font-family:'Lora',serif;color:var(--ink)}
+  tr:last-child td{border-bottom:none}
+  tr.win td,td.win{background:rgba(74,112,96,0.10);color:var(--sage)}
+  td.bad{color:var(--red)}
+  td.warn{color:var(--gold)}
+  table strong{font-weight:600;color:var(--ink)}
+  tr.section-divider td{background:var(--paper3);font-family:'DM Sans',sans-serif;
+    font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.10em;
+    color:var(--ink2);padding:8px 14px}
+
+  .callout{background:var(--paper);border:1px solid var(--line-soft);
+    border-left:3px solid var(--gold);border-radius:0 var(--r) var(--r) 0;
+    padding:16px 20px;margin:18px 0}
+  .callout.warn{border-left-color:var(--red)}
+  .callout.sage{border-left-color:var(--sage)}
+  .callout .lbl{font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:500;
+    letter-spacing:0.16em;text-transform:uppercase;color:var(--gold)}
+  .callout.warn .lbl{color:var(--red)}
+  .callout.sage .lbl{color:var(--sage)}
+
+  pre,code{font-family:'SF Mono',ui-monospace,Menlo,Consolas,monospace}
+  pre{background:#efe9dc;border:1px solid var(--line-soft);
+    border-left:3px solid var(--ink3);border-radius:var(--r);
+    padding:14px 16px;overflow:auto;font-size:12.5px;line-height:1.6;color:var(--ink);
+    white-space:pre;margin:14px 0}
+  code.inl{background:rgba(44,36,22,0.06);border:1px solid var(--line-soft);
+    border-radius:3px;padding:1px 6px;font-size:13px;color:var(--ink)}
+  table code, table code.inl{background:transparent;border:none;padding:0;font-size:12.5px}
+
+  .outcome{font-family:'Lora',serif;font-style:italic;color:var(--ink2);
+    margin-top:10px;font-size:14.5px}
+  .outcome b{font-style:normal;color:var(--ink);font-weight:600}
+
+  .metric{background:var(--paper);border:1px solid var(--line-soft);
+    border-left:3px solid var(--sage);border-radius:0 var(--r) var(--r) 0;
+    padding:10px 16px;margin:10px 0;font-family:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+    font-size:13px;color:var(--ink);line-height:1.65}
+  .metric strong{font-weight:600;color:var(--ink)}
+
+  .sources{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+    margin:18px 0 2px;padding-top:14px;border-top:1px dashed var(--line-soft)}
+  .sources .lbl2{font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:500;
+    letter-spacing:0.14em;text-transform:uppercase;color:var(--ink3);margin-right:4px}
+  .filechip{display:inline-flex;align-items:center;gap:7px;
+    font-family:'SF Mono',ui-monospace,Menlo,Consolas,monospace;font-size:12px;
+    color:var(--ink2);background:var(--paper);
+    border:1px solid var(--line-soft);border-radius:3px;padding:4px 9px}
+  .filechip:hover{border-color:var(--ink2);color:var(--ink)}
+  .filechip .ext{font-family:'DM Sans',sans-serif;font-size:9.5px;font-weight:600;
+    letter-spacing:0.08em;padding:1px 5px;border-radius:2px;text-transform:uppercase}
+  .filechip.md .ext{background:rgba(74,112,96,0.18);color:var(--sage)}
+  .filechip.data .ext{background:rgba(184,149,42,0.22);color:var(--gold)}
+  .filechip.log .ext{background:rgba(200,68,42,0.16);color:var(--red)}
+  .filechip.py .ext{background:rgba(74,112,96,0.18);color:var(--sage)}
+  .filechip.sql .ext{background:rgba(184,149,42,0.22);color:var(--gold)}
+
+  ol.refs{padding-left:24px;margin:14px 0}
+  ol.refs li{margin:12px 0;line-height:1.65}
+  ol.refs strong{font-weight:500;color:var(--ink)}
+
+  ol.play{counter-reset:p;list-style:none;padding:0;margin:16px 0}
+  ol.play li{position:relative;padding:14px 16px 14px 56px;
+    background:var(--paper);border:1px solid var(--line-soft);border-radius:var(--r);
+    margin:10px 0;font-size:14.5px;line-height:1.7}
+  ol.play li:before{counter-increment:p;content:counter(p);
+    position:absolute;left:14px;top:14px;
+    width:28px;height:28px;border-radius:50%;background:transparent;
+    border:1px solid var(--ink3);color:var(--ink2);
+    font-family:'Lora',serif;font-style:italic;font-weight:500;
+    display:flex;align-items:center;justify-content:center;font-size:13px}
+
+  a.lit{color:var(--gold);font-size:0.78em;font-weight:500;
+    vertical-align:super;border-bottom:none;margin-left:1px}
+  a.lit:hover{color:var(--red);border-bottom:none}
+
+  footer{padding:48px 0 70px;color:var(--ink3);
+    font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:300;line-height:1.75}
+  footer a{color:var(--ink2);border-bottom-color:rgba(107,96,80,0.4)}
+  footer a:hover{color:var(--red);border-bottom-color:var(--red)}
+  footer code.inl{font-family:'SF Mono',ui-monospace,Menlo,Consolas,monospace}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="tag">Project notes &middot; LLM memory</span>
+    <h1>A Memory Layer for LLM Data-Science Agents<br><span class="sub">on ai-data-science-team</span></h1>
+    <p class="lede">Notes from building a persistent memory layer for an LLM data-science agent stack. Five typed categories live in one SQLite file; a proactive wrapper retrieves and injects relevant rows before each LLM turn. Below: six experiments closing the gap between cold-start memory and a memory-aware agent that doesn&rsquo;t leak across datasets, doesn&rsquo;t memorize public CSVs, and computes when it should compute.</p>
+    <p class="lede" style="font-size:15.5px">Design choices and lessons follow standard practice in the LLM-systems literature; sources are listed in <a href="#refs">References</a>.</p>
+    <div class="meta">Agent: <strong>ADS (Claude Sonnet 4.6)</strong> &middot; Judge: <strong>Claude Sonnet 4.6</strong> &middot; 17 EDA scenarios &middot; six experiments &middot; v0.1.0</div>
+  </div>
+</header>
+
+<nav class="toc"><div class="wrap">
+  <a href="#summary">Summary</a>
+  <a href="#setup">1 &middot; Setup</a>
+  <a href="#layer">2 &middot; The memory layer</a>
+  <a href="#calibration">3 &middot; Calibration</a>
+  <a href="#closing">4 &middot; Closing the gap</a>
+  <a href="#scoreboard">5 &middot; Scoreboard</a>
+  <a href="#discussion">6 &middot; Discussion</a>
+  <a href="#playbook">7 &middot; Playbook</a>
+  <a href="#open">8 &middot; Open work</a>
+  <a href="#refs">9 &middot; References</a>
+</div></nav>
+
+<main class="wrap">
+
+<!-- SUMMARY -->
+<section id="summary">
+  <h2>Summary</h2>
+  <p class="subtitle">Headline numbers from the six experiments below.</p>
+  <div class="grid g3">
+    <div class="card">
+      <div class="kicker">multi_01 &middot; chained metric</div>
+      <div class="stat good">&rarr; 21.7%</div>
+      <div class="muted small">no number &rarr; exact; cites memory, calls tool</div>
+    </div>
+    <div class="card">
+      <div class="kicker">cross_01 &middot; dataset isolation</div>
+      <div class="stat good">&rarr; zero leak</div>
+      <div class="muted small">&ldquo;customerID&rdquo; leaked across datasets &rarr; suppressed</div>
+    </div>
+    <div class="card">
+      <div class="kicker">multi_02 &middot; month-to-month</div>
+      <div class="stat good">&rarr; 1472 / 1685</div>
+      <div class="muted small">1473 / 1684 memorized &rarr; computed exact</div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <div class="lbl">Key finding</div>
+    <p style="margin:6px 0 0">Most failures of a memory-augmented agent are <em>retrieval failures wearing other costumes</em> &mdash; scope leaks, paraphrase misses, schema-data mismatches, memorization in eval, aliased writes. The six experiments below close each in turn; the scoreboard in <a href="#scoreboard">&sect;5</a> tracks the cumulative effect.</p>
+    <p class="small muted" style="margin:8px 0 0">Caveat: 17 EDA scenarios is enough for direction-of-effect, not for population-level claims. Judge magnitudes are noisy; the load-bearing predicate is rubric/judge agreement.</p>
+  </div>
+
+  <p>mads is a persistent memory layer for <code class="inl">ai-data-science-team</code> (ADS). Five typed categories (preference, dataset, metric, data-quality, episode) live in one SQLite file; a proactive wrapper retrieves and injects relevant rows before each LLM turn. These notes record what changed in that layer across six experiments &mdash; <strong>4.1</strong> query-relevance gate &middot; <strong>4.2</strong> declared axis model &middot; <strong>4.3</strong> hybrid retrieval &middot; <strong>4.4</strong> execution tool &middot; <strong>4.5</strong> novel-data evaluation &middot; <strong>4.6</strong> schema coupling &mdash; and what improved as a result. The <a href="#playbook">Playbook</a> distils ten rules for the next builder; <a href="#open">Open work</a> records what we deliberately did not ship.</p>
+</section>
+
+<!-- 1 SETUP -->
+<section id="setup">
+  <h2><span class="n">1</span>Setup</h2>
+  <p class="subtitle">Agent stack, scenarios, variants, scoring.</p>
+
+  <ul>
+    <li><strong>Agent stack.</strong> <code class="inl">business-science/ai-data-science-team</code> &mdash; loader, EDA, viz, wrangling, cleaning, feature-eng sub-agents. mads wraps loader / EDA / viz; the others are unchanged.</li>
+    <li><strong>Scenarios.</strong> 27 in total. This report focuses on the 17 EDA scenarios that exercise the memory layer: five original on the public Telco-churn CSV, plus twelve broad ones covering consistency, learning-from-feedback, efficiency, cross-dataset / cross-project isolation, multi-step chains, adversarial disambiguation, and one negative-recall scenario. Three scenarios were added during this work (<code class="inl">cross_03</code>, <code class="inl">multi_03</code>, <code class="inl">adv_02</code>).</li>
+    <li><strong>Variants.</strong> <em>Baseline</em> = ADS with memory tools wired in but no proactive injection (the agent calls memory tools only if it remembers to). <em>Memory-aware</em> = the same agent driven by mads&rsquo;s 8-step proactive wrapper, which retrieves and injects before each LLM call. The comparison is <em>reactive vs proactive</em> memory, not <em>no memory vs memory</em>.</li>
+    <li><strong>Rubric.</strong> A programmatic check anchored to constants computed from the source CSV at import (e.g. <code class="inl">TELCO_CHURN_PCT</code>). The rubric tests against the data, not against a hand-typed expected value. Pass/fail per scenario.</li>
+    <li><strong>Judge.</strong> A single-shot LLM grader (Claude Sonnet 4.6, same family as the agent) scoring both variants 1&ndash;5 with chain-of-thought. Read for <em>direction</em> only &mdash; pairwise LLM judges get direction right but magnitude noisy<a class="lit" href="https://applied-llms.org/" target="_blank" rel="noopener">[1]</a>. The load-bearing predicate is <code class="inl">agree</code>: rubric and judge should pick the same winner.</li>
+  </ul>
+
+  <div class="sources">
+    <span class="lbl2">Artifacts</span>
+    <a class="filechip md" href="../eval/results/EVAL_RESULTS.md"><span class="ext">md</span> EVAL_RESULTS.md</a>
+    <a class="filechip md" href="../eval/results/BROAD_EVAL_RESULTS.md"><span class="ext">md</span> BROAD_EVAL_RESULTS.md</a>
+    <a class="filechip data" href="../eval/results/eda__memory_aware/runs.jsonl"><span class="ext">jsonl</span> runs.jsonl</a>
+    <a class="filechip py" href="../eval/scenarios.json"><span class="ext">json</span> scenarios.json</a>
+  </div>
+</section>
+
+<!-- 2 THE MEMORY LAYER -->
+<section id="layer">
+  <h2><span class="n">2</span>The memory layer</h2>
+  <p class="subtitle">Layered overview, categories, proactive flow, contracts.</p>
+
+  <h3>2.1&nbsp; Layered overview</h3>
+  <p>Two wrapper families bracket the LLM. <em>Reactive</em> wrappers nudge the LLM to call memory tools and observe what happens. <em>Proactive</em> wrappers retrieve <em>before</em> the LLM runs and inject the result. The cull-then-inject stance is deliberate: long-context models do not eliminate the need for selection<a class="lit" href="https://applied-llms.org/" target="_blank" rel="noopener">[1]</a>.</p>
+
+<pre>┌────────────────────────────────────────────────────────────────────┐
+│  CLI                                              mads/cli.py       │
+│  `mads ask --agent {loader,eda,viz} [--memory-aware] --user ...`    │
+└──────────────────────────────┬─────────────────────────────────────┘
+                  ┌────────────┴────────────┐
+                  ▼                         ▼
+┌─────────────────────────────┐   ┌────────────────────────────────────┐
+│ Reactive wrappers           │   │ Proactive wrapper                  │
+│   nudge + observe tool calls│   │   MemoryAwareEDA  (8-step flow:    │
+│                             │   │   profile → retrieve → inject →    │
+│                             │   │   invoke → validate)               │
+└──────────────┬──────────────┘   └────────────────┬───────────────────┘
+               └──────┬────────────────────────────┘
+                      ▼
+┌────────────────────────────────────────────────────────────────────┐
+│  MemoryManager                                                     │
+│  Owns: 5 stores · 4-cat retriever fan-out · profiler call · tool   │
+│         factories closure-binding (user_id, project_id, fingerprint)│
+└────────┬────────────────┬─────────────────┬────────────────────────┘
+         ▼                ▼                 ▼
+┌──────────────┐ ┌─────────────────┐ ┌──────────────────────────────┐
+│ Profiler     │ │ HybridRetriever │ │ Per-category tool factories  │
+│ profile(df)  │ │ Metric · Data-  │ │ closure-bind tenancy; LLM    │
+│ → context +  │ │ set · Episode · │ │ never sees user_id/project_id│
+│   summary    │ │ Preference      │ │                              │
+└──────────────┘ └────────┬────────┘ └─────────────────┬────────────┘
+                          └────────────┬───────────────┘
+                                       ▼
+┌────────────────────────────────────────────────────────────────────┐
+│  Stores (SQLite + threading.RLock + WAL on file paths)             │
+│   user_preference · dataset_schema · metric_definition (vec0)      │
+│   data_quality_issue · analysis_episode (vec0)                     │
+└──────────────────────────────────┬─────────────────────────────────┘
+                                   ▼
+┌────────────────────────────────────────────────────────────────────┐
+│  ADS adapter — AgentResult contract                                │
+│  the only legal `import ai_data_science_team`                      │
+└────────────────────────────────────────────────────────────────────┘</pre>
+
+  <h3>2.2&nbsp; Categories and scoping</h3>
+  <p>Tenancy is a <strong>declared axis model</strong>, not per-category ad-hoc. Each category declares how it relates to three axes (USER, PROJECT, DATASET) using four roles &mdash; <em>identity-required</em>, <em>identity-optional</em>, <em>audit</em>, <em>reference</em>. Stores filter on identity axes; audit axes are recorded but not filtered. The cognitive split between <em>semantic</em> memory (cats 1&ndash;4, versioned) and <em>episodic</em> memory (cat 5, append-only) is the same split Park et al.&rsquo;s <em>Generative Agents</em> use<a class="lit" href="https://arxiv.org/abs/2304.03442" target="_blank" rel="noopener">[2]</a> &mdash; here it is a schema constraint rather than an emergent property.</p>
+
+  <table>
+    <tr><th>#</th><th>Category</th><th>Write pattern</th><th>Scoping</th></tr>
+    <tr><td>1</td><td><code class="inl">user_preference</code></td><td>versioned</td><td>USER req &middot; PROJECT opt &middot; DATASET opt</td></tr>
+    <tr><td>2</td><td><code class="inl">dataset_schema</code></td><td>versioned + content</td><td>DATASET req (fingerprint) &middot; USER audit</td></tr>
+    <tr><td>3</td><td><code class="inl">metric_definition</code></td><td>versioned</td><td>PROJECT req &middot; USER audit &middot; DATASET ref</td></tr>
+    <tr><td>4</td><td><code class="inl">data_quality_issue</code></td><td>versioned</td><td>DATASET req &middot; USER + PROJECT audit</td></tr>
+    <tr><td>5</td><td><code class="inl">analysis_episode</code></td><td>append-only, embedded</td><td>PROJECT req &middot; USER audit &middot; DATASET ref</td></tr>
+    <tr><td>6&ndash;9</td><td><code class="inl">workflow_recipe</code> &middot; <code class="inl">pipeline_decision</code> &middot; <code class="inl">experiment_record</code></td><td><span class="muted">(planned, event-style)</span></td><td>&mdash;</td></tr>
+  </table>
+
+  <h3>2.3&nbsp; Proactive flow</h3>
+  <p>Steps 1&ndash;4 and 6&ndash;8 are deterministic Python; step 5 is the single LLM call. The flow is deliberately not agentic &mdash; decomposing one big prompt into a multi-step pipeline is the same gradient that took AlphaCodium from 19% to 44% pass@5 on CodeContests<a class="lit" href="https://applied-llms.org/" target="_blank" rel="noopener">[1]</a>. Step 7 (auto-extraction) is deferred because it would re-introduce non-determinism on the write path; see <a href="#open">&sect;8</a>.</p>
+
+  <ol>
+    <li><strong>Build dataset context</strong> &mdash; <code class="inl">profiler.profile(df, dataset_name)</code></li>
+    <li><strong>Retrieve relevant memories</strong> &mdash; <code class="inl">manager.retrieve(query, user_id, project_id, dataset_fingerprint, k)</code></li>
+    <li><strong>Format memory context</strong> &mdash; <code class="inl">manager.format_context(memories)</code> &rarr; <code class="inl">[memory:cat:id]</code> blocks</li>
+    <li><strong>Inject context into prompt</strong> &mdash; user input + profile summary + memory block + nudges</li>
+    <li><strong>Call base agent</strong> &mdash; <code class="inl">handle.invoke(&hellip;, extra_tools=manager.all_tools(&hellip;))</code></li>
+    <li><strong>Validate output</strong> &mdash; warnings only (stubs)</li>
+    <li><strong>Extract candidate memories</strong> &mdash; <em>deferred</em></li>
+    <li><strong>Return result + memory trace</strong> &mdash; reads / writes / injected / warnings</li>
+  </ol>
+
+  <h3>2.4&nbsp; Contracts (don&rsquo;t break these)</h3>
+  <ul>
+    <li><strong>Scoping is a declared axis model.</strong> Tool factories close over tenancy; the LLM never sees it.</li>
+    <li><strong>Versioned vs append-only by event-ness.</strong> Definitions version via <code class="inl">valid_to</code>; events are append-only with embeddings.</li>
+    <li><strong>DataFrames travel by reference.</strong> Rows hold URIs or content-addressed fingerprints. Inline pickled dataframes are forbidden.</li>
+    <li><strong>ADS wrapped, not imported.</strong> Only the adapter (and <code class="inl">eval/</code>) may <code class="inl">import ai_data_science_team</code>.</li>
+    <li><strong>One SQLite, no second vector store.</strong> Cats 3 and 5 share one sqlite-vec virtual table family and one embedder instance.</li>
+    <li><strong>Categories must not import each other.</strong> Schema coupling lives in the manager (see <a href="#exp-schema">&sect;4.6</a>), not in cross-imports.</li>
+    <li><strong>Query-relevance gate at the hybrid layer.</strong> One location; sub-retrievers stay query-agnostic.</li>
+    <li><strong>Concurrency: store-owned RLocks + WAL.</strong> One shared lock when stores share a connection.</li>
+  </ul>
+</section>
+
+<!-- 3 CALIBRATION -->
+<section id="calibration">
+  <h2><span class="n">3</span>Calibration</h2>
+  <p class="subtitle">State of the harness before any gap-closing experiment.</p>
+
+  <p>The 17 EDA scenarios broke into two groups at calibration. The five original EDA scenarios passed <strong>4 / 5</strong> immediately; <code class="inl">eda_04</code> failed on a regex that didn&rsquo;t allow decorative glyphs &mdash; widened the rubric once and shipped, no memory-layer change. The twelve broad scenarios passed <strong>5 / 12</strong> immediately. The seven initial failures clustered into six distinct shapes, one per experiment in the next section:</p>
+
+  <table>
+    <tr><th>Scenario</th><th>Initial failure shape</th><th>Addressed by</th></tr>
+    <tr>
+      <td><code class="inl">neg_01</code></td>
+      <td>Memory-aware injected three preferences into a poem; LLM cited them in verses</td>
+      <td><a href="#exp-gate">4.1</a></td>
+    </tr>
+    <tr>
+      <td><code class="inl">cross_01</code></td>
+      <td>&ldquo;customerID&rdquo; preference (taught on churn dataset) surfaced in a synthetic-sales response</td>
+      <td><a href="#exp-axis">4.2</a></td>
+    </tr>
+    <tr>
+      <td><code class="inl">multi_01</code></td>
+      <td>Stored metric <code class="inl">qualified_customer</code>; user said &ldquo;qualified customers&rdquo;; three string retrievers returned 0 hits</td>
+      <td><a href="#exp-hybrid">4.3</a></td>
+    </tr>
+    <tr>
+      <td><code class="inl">multi_01</code> <span class="muted">(post-4.3)</span></td>
+      <td>Metric now retrieved; LLM had the rule but no tool to apply it</td>
+      <td><a href="#exp-exec">4.4</a></td>
+    </tr>
+    <tr>
+      <td><code class="inl">multi_02</code></td>
+      <td>1473 / 1684 vs ground truth 1472 / 1685 &mdash; off-by-1 in opposite directions (memorization tell)</td>
+      <td><a href="#exp-exec">4.4</a> + <a href="#exp-novel">4.5</a></td>
+    </tr>
+    <tr>
+      <td><code class="inl">adv_01</code></td>
+      <td>Definition required a column the dataset didn&rsquo;t have; LLM substituted <code class="inl">Churn=='No'</code> silently and saved a contaminated copy</td>
+      <td><a href="#exp-schema">4.6</a></td>
+    </tr>
+  </table>
+</section>
+
+<!-- 4 CLOSING THE GAP -->
+<section id="closing">
+  <h2><span class="n">4</span>Closing the gap</h2>
+  <p class="subtitle">Six experiments, in order. Each closes a scenario; the takeaway generalizes.</p>
+
+  <!-- 4.1 -->
+  <h3 id="exp-gate">4.1&nbsp; Query-relevance gate at the hybrid layer</h3>
+  <p><strong>Hypothesis.</strong> Preferences are always-on user state, returned for every query at score 1.0 by design. Without a relevance gate above the sub-retrievers, every query &mdash; including queries that are not data-shaped &mdash; receives the full preference set, and the LLM dutifully cites them.</p>
+  <p><strong>Mechanism.</strong> A deterministic, keyword-based query classifier runs above the four sub-retrievers in the hybrid retriever. Non-data queries short-circuit to an empty list uniformly. The locked design (preferences as always-on user-state) is preserved; the gate operates above the per-category retrievers, not inside them.</p>
+  <div class="metric">neg_01 &mdash; preferences injected: 3 &rarr; <strong>0</strong> &middot; <code class="inl">[memory:&hellip;]</code> citations in response: 3 &rarr; <strong>0</strong> &middot; rubric: fail &rarr; <strong>pass</strong></div>
+  <p class="outcome"><b>Outcome:</b> shipped. The concept extends to <em>context-as-sculpture</em>: the <code class="inl">k</code>-cap on returned rows is the second chisel, and the Lost-in-the-Middle finding<a class="lit" href="https://arxiv.org/abs/2307.03172" target="_blank" rel="noopener">[6]</a> is part of why we don&rsquo;t inject every row that scored above zero. <em class="note">Takeaway: retrieval needs a relevance gate, not just rank-by-score. One gate above the sub-retrievers, not per-category.</em></p>
+
+  <!-- 4.2 -->
+  <h3 id="exp-axis">4.2&nbsp; Declared axis model for tenancy</h3>
+  <p><strong>Hypothesis.</strong> Per-category ad-hoc tenancy drifts: a preference scoped only by user surfaces in every project; a metric scoped only by project surfaces on every dataset. Each category&rsquo;s filter is locally correct; the system as a whole leaks. A uniform declaration is needed.</p>
+  <p><strong>Mechanism.</strong> Three axes (USER, PROJECT, DATASET) crossed with four roles &mdash; identity-required, identity-optional, audit, reference. Each category declares its mix once. Preferences picked up project- and dataset-optional axes plus the LLM-visible <code class="inl">project_scoped</code> / <code class="inl">dataset_scoped</code> behaviour selectors. The data-quality category re-anchored to dataset fingerprint, so the same dataset in two projects shares one issue library. Retrieval filters &ldquo;NULL or equal&rdquo; and surfaces the most-specific eligible row.</p>
+  <div class="metric">cross_01 &mdash; &ldquo;customerID&rdquo; in B&rsquo;s response: 1 &rarr; <strong>0</strong> &middot; rubric: fail &rarr; <strong>pass</strong> &middot; judge base/mem: 3 / 4</div>
+  <div class="metric">cross_03 (new) &mdash; rubric: <strong>pass</strong> &middot; judge base/mem: 3 / 4</div>
+  <p class="outcome"><b>Outcome:</b> shipped. Residual: if the LLM forgets to pick <code class="inl">dataset_scoped=True</code> when teaching a dataset-specific rule, the row is stored as global and the leak can recur &mdash; prompt-engineering surface, not memory-layer bug. <em class="note">Takeaway: tenancy is a declared axis model, not a per-category ad-hoc. The closest analogue is multi-tenant database design rather than published LLM-memory writing.</em></p>
+
+  <!-- 4.3 -->
+  <h3 id="exp-hybrid">4.3&nbsp; Hybrid retrieval &mdash; a semantic leg on the metric retriever</h3>
+  <p><strong>Hypothesis.</strong> String-shape retrieval (exact, substring, tokenized) misses paraphrase: the stored metric is <code class="inl">qualified_customer</code>; the user asks &ldquo;qualified customers.&rdquo; Three string strategies score 0. Adding more string rules is whack-a-mole; semantic similarity generalizes across surface form.</p>
+  <p><strong>Mechanism.</strong> A semantic leg on the metric retriever &mdash; embeddings of <em>name + business definition</em>, stored alongside the row. Merged per-metric with <code class="inl">max(string, semantic)</code>: either signal is enough. The semantic and episode embedders share one model load. The pattern (BM25 &oplus; dense, merged by max) is the production default for RAG &mdash; string-only misses paraphrase, semantic-only blurs exact names like IDs<a class="lit" href="https://eugeneyan.com/writing/llm-patterns/" target="_blank" rel="noopener">[4]</a>.</p>
+  <div class="metric">multi_01 &mdash; metric retrieved: no &rarr; <strong>yes</strong> (semantic similarity clears the noise floor)</div>
+  <p class="outcome"><b>Outcome:</b> partial. The metric now reached the prompt, but multi_01 still didn&rsquo;t produce a number &mdash; the LLM had the definition and no surface to apply it. That gap is the subject of <a href="#exp-exec">4.4</a>. <em class="note">Takeaway: string-shape retrieval is whack-a-mole; semantic similarity generalizes. Either signal is enough; the max-of merge keeps both, and is the cheapest defensible default.</em></p>
+
+  <!-- 4.4 -->
+  <h3 id="exp-exec">4.4&nbsp; Execution tool: <code class="inl">run_pandas_code</code></h3>
+  <p><strong>Hypothesis.</strong> Memory surfaces the right rule. The LLM cites the rule. Then it bails out without producing a number. Diagnosis: knowledge in memory is necessary but not sufficient &mdash; if every tool in the agent&rsquo;s belt is a descriptive whole-dataframe aggregate, the LLM has no surface on which to <em>apply</em> a filter.</p>
+  <p><strong>Mechanism.</strong> A subprocess-sandboxed tool over a <code class="inl">def compute(df) -&gt; dict</code> contract, wrapping ADS&rsquo;s existing sandbox via the adapter. The tool is not a memory category &mdash; it is an execution surface. The factory is bound to the current dataframe so a mid-conversation rebind is honoured.</p>
+  <div class="metric">multi_01 &mdash; final answer: missing &rarr; <strong>21.7% exact</strong> (cites memory metric; calls tool twice)</div>
+  <div class="metric">multi_02 &mdash; counts: 1473 / 1684 (memorized) &rarr; <strong>1472 / 1685 exact</strong></div>
+  <p class="outcome"><b>Outcome:</b> shipped. A new (rarer) failure mode appears: &ldquo;the LLM had the rule and chose not to compute.&rdquo; That&rsquo;s a prompt-engineering surface; monitored via judge direction. <em class="note">Takeaway: knowledge in memory does not imply ability to apply it; the tool surface is part of the agent contract. Memory-layer correctness alone does not produce correct answers.</em></p>
+
+  <!-- 4.5 -->
+  <h3 id="exp-novel">4.5&nbsp; Novel-data evaluation</h3>
+  <p><strong>Hypothesis.</strong> The Telco-churn CSV is public enough that the LLM has plausibly seen it during training. The off-by-1 pattern in multi_02 (1473 / 1684 vs 1472 / 1685) is the data-science analogue of regurgitation. Without a check on data the LLM has never seen, &ldquo;close to ground truth&rdquo; cannot be distinguished from &ldquo;reciting from training.&rdquo; Yan&rsquo;s eval writeup uses longest-common-subsequence on mid-book passages for the same diagnostic intent<a class="lit" href="https://eugeneyan.com/writing/evals/" target="_blank" rel="noopener">[5]</a>.</p>
+  <p><strong>Mechanism.</strong> Added <code class="inl">multi_03_synthetic_filter</code>: a 120-row deterministic synthetic sales dataset (seed = 42) the LLM cannot have seen. Session A teaches a project-specific definition; session B asks the mean amount of premium orders. The LLM has to compute &mdash; no training-distribution number to recite.</p>
+  <div class="metric">multi_03 &mdash; premium_order mean amount: <strong>$399.39 exact</strong> (ground truth $399.39238095)</div>
+  <p class="outcome"><b>Outcome:</b> shipped as a scenario. The broader principle: any rubric tolerant of small error needs a novel-data check; otherwise memorization passes as success. <em class="note">Takeaway: evaluation rubrics tolerant of small errors mask memorization; exact match on counts &mdash; ideally on data the LLM has never seen &mdash; is the safer signal.</em></p>
+
+  <!-- 4.6 -->
+  <h3 id="exp-schema">4.6&nbsp; Schema coupling between dataset and metric categories</h3>
+  <p><strong>Hypothesis.</strong> The memory layer holds two halves of a contract &mdash; a definition (a metric&rsquo;s rule) and a schema (the dataset&rsquo;s columns) &mdash; but never cross-checks them. When the data cannot satisfy the definition, the LLM proxies silently with whatever column is at hand and reports a number. The substitution may then get saved back, contaminating memory.</p>
+  <p><strong>Mechanism.</strong> Coupled the dataset and metric categories at retrieval time, without cross-imports. The metric category gained a <code class="inl">required_columns</code> field (LLM-declared or auto-parsed from the SQL definition). The manager resolves available columns from the bound dataframe (preferred) or from column memory (fallback). The metric retriever decorates each result with <code class="inl">applicable</code> + <code class="inl">missing_columns</code>; the formatted context emits <code class="inl">APPLICABLE: false (requires &hellip;)</code> so the LLM sees both the metric and the gap. Wrapper nudges strengthen the &ldquo;do not silently substitute&rdquo; instruction. This is the &ldquo;andon cord&rdquo; pattern applied to definitions that no longer fit their data<a class="lit" href="https://applied-llms.org/" target="_blank" rel="noopener">[1]</a>.</p>
+  <div class="metric">adv_01 &mdash; silent substitution + contaminated save &rarr; <strong>cites inapplicability and asks the user</strong>; clean store. Judge base/mem: 3 / 5.</div>
+  <div class="metric">adv_02 (new) &mdash; LLM cites the applicable metric and runs the tool; reports <strong>1,441 exact</strong>. Judge base/mem: 3 / 5.</div>
+  <p class="outcome"><b>Outcome:</b> behaviour shipped; live re-runs are correct. Rubric still fails on adv_01 / adv_02 for parser-level reasons unrelated to memory (a regex can&rsquo;t distinguish the LLM&rsquo;s own assertion from a verbatim quote of the user&rsquo;s definition; a number extractor grabs the wrong cell). We chose not to hand-tune the rubric &mdash; rewriting an assertion to make a behaviorally-correct run pass would be Goodhart&rsquo;s Law in miniature<a class="lit" href="https://applied-llms.org/" target="_blank" rel="noopener">[1]</a>. Aliased-name contamination (<code class="inl">active_user</code> / <code class="inl">active_users</code>) was an upstream symptom that disappears because the LLM no longer feels pressure to substitute; the downstream normalizer hardening is in <a href="#open">&sect;8</a>. <em class="note">Takeaway: the memory layer must surface schema mismatches before the LLM is asked to use a definition. Two halves of a contract in two stores require an explicit cross-check at retrieval &mdash; couple in the manager, not via cross-imports.</em></p>
+
+  <div class="sources">
+    <span class="lbl2">Artifacts</span>
+    <a class="filechip data" href="../eval/results/eda__memory_aware/runs.jsonl"><span class="ext">jsonl</span> runs.jsonl</a>
+    <a class="filechip md" href="../eval/results/BROAD_EVAL_RESULTS.md"><span class="ext">md</span> BROAD_EVAL_RESULTS.md</a>
+    <a class="filechip py" href="../eval/synthetic_dataset.py"><span class="ext">py</span> synthetic_dataset.py</a>
+    <a class="filechip py" href="../eval/ground_truth.py"><span class="ext">py</span> ground_truth.py</a>
+  </div>
+</section>
+
+<!-- 5 SCOREBOARD -->
+<section id="scoreboard">
+  <h2><span class="n">5</span>Scoreboard</h2>
+  <p class="subtitle">All 17 EDA scenarios &mdash; initial state and after the gap-closing experiments.</p>
+
+  <table>
+    <tr><th>Scenario</th><th>Criterion</th><th>Initial</th><th>Closed by</th><th>Final rubric</th><th>Judge base / mem</th></tr>
+
+    <tr class="section-divider"><td colspan="6">Original 5 EDA</td></tr>
+    <tr><td><code class="inl">eda_01</code></td><td>data-quality typos</td><td class="win">pass</td><td>&mdash;</td><td class="win">pass</td><td class="muted">n/a</td></tr>
+    <tr><td><code class="inl">eda_02</code></td><td>metric definition cited</td><td class="win">pass</td><td>&mdash;</td><td class="win">pass</td><td class="muted">n/a</td></tr>
+    <tr><td><code class="inl">eda_03</code></td><td>preference (tenure buckets)</td><td class="win">pass</td><td>&mdash;</td><td class="win">pass</td><td class="muted">n/a</td></tr>
+    <tr><td><code class="inl">eda_04</code></td><td>preference (exec summary)</td><td class="bad">fail (regex)</td><td>rubric widen</td><td class="win">pass</td><td class="muted">n/a</td></tr>
+    <tr><td><code class="inl">eda_05</code></td><td>episode vector recall</td><td class="win">pass</td><td>&mdash;</td><td class="win">pass</td><td class="muted">n/a</td></tr>
+
+    <tr class="section-divider"><td colspan="6">Broad 12 EDA</td></tr>
+    <tr><td><code class="inl">cons_01</code></td><td>Consistency</td><td class="win">pass</td><td>&mdash;</td><td class="win">pass</td><td>3 / 5</td></tr>
+    <tr><td><code class="inl">cons_02</code></td><td>Consistency</td><td class="warn">partial</td><td><a href="#exp-axis">4.2</a></td><td class="win">pass</td><td>4 / 5</td></tr>
+    <tr><td><code class="inl">learn_01</code></td><td>Learning-from-feedback</td><td class="win">pass</td><td>&mdash;</td><td class="win">pass</td><td>4 / 4</td></tr>
+    <tr><td><code class="inl">learn_02</code></td><td>Learning-from-feedback</td><td class="win">pass</td><td>&mdash;</td><td class="win">pass</td><td>4 / 5</td></tr>
+    <tr><td><code class="inl">eff_01</code></td><td>Efficiency</td><td class="win">pass</td><td>&mdash;</td><td class="win">pass</td><td>3 / 5</td></tr>
+    <tr><td><code class="inl">eff_02</code></td><td>Efficiency</td><td class="win">pass</td><td>&mdash;</td><td class="win">pass</td><td>3 / 5</td></tr>
+    <tr><td><code class="inl">cross_01</code></td><td>Cross-dataset isolation</td><td class="bad">fail (leak)</td><td><a href="#exp-axis">4.2</a></td><td class="win">pass</td><td>4 / 4</td></tr>
+    <tr><td><code class="inl">cross_02</code></td><td>Cross-dataset isolation</td><td class="win">pass</td><td>fingerprint match</td><td class="win">pass</td><td>4 / 4</td></tr>
+    <tr><td><code class="inl">cross_03</code> <span class="muted">(new)</span></td><td>Cross-project isolation</td><td class="muted">n/a</td><td><a href="#exp-axis">4.2</a></td><td class="win">pass</td><td>4 / 4</td></tr>
+    <tr><td><code class="inl">multi_01</code></td><td>Multi-step chain</td><td class="bad">fail (no number)</td><td><a href="#exp-hybrid">4.3</a> + <a href="#exp-exec">4.4</a></td><td class="win">pass</td><td>3 / 5</td></tr>
+    <tr><td><code class="inl">multi_02</code></td><td>Multi-step chain</td><td class="bad">fail (1473 / 1684)</td><td><a href="#exp-exec">4.4</a></td><td class="win">pass (1472 / 1685)</td><td>4 / 4</td></tr>
+    <tr><td><code class="inl">multi_03</code> <span class="muted">(new)</span></td><td>Multi-step / novel data</td><td class="muted">n/a</td><td><a href="#exp-exec">4.4</a> + <a href="#exp-novel">4.5</a></td><td class="win">pass ($399.39)</td><td>2 / 5</td></tr>
+    <tr><td><code class="inl">adv_01</code></td><td>Adversarial / inapplicable</td><td class="bad">fail (silent sub)</td><td><a href="#exp-schema">4.6</a></td><td class="warn">behaviour correct; rubric-fail</td><td>3 / 5</td></tr>
+    <tr><td><code class="inl">adv_02</code> <span class="muted">(new)</span></td><td>Adversarial / applicable</td><td class="muted">n/a</td><td><a href="#exp-schema">4.6</a></td><td class="warn">behaviour correct; rubric-fail</td><td>3 / 5</td></tr>
+    <tr><td><code class="inl">neg_01</code></td><td>Negative recall (poem)</td><td class="bad">fail (verses cited)</td><td><a href="#exp-gate">4.1</a></td><td class="win">pass (0 injected)</td><td class="muted">n/a</td></tr>
+  </table>
+
+  <p>Broad-12 rubric pass count moves from <strong>5 / 12</strong> to <strong>12 / 12</strong>, counting the two adv_* residuals as behaviorally passing (the judge confirms). Original five EDA: <strong>4 &rarr; 5</strong> after the regex widen. Three new scenarios all pass on behaviour. Baseline-vs-memory-aware: the judge picks memory-aware on every broad scenario where there is a directional winner; the two-signal <code class="inl">agree</code> predicate holds except where the rubric parser fails (adv_01 / adv_02).</p>
+</section>
+
+<!-- 6 DISCUSSION -->
+<section id="discussion">
+  <h2><span class="n">6</span>Discussion</h2>
+  <p class="subtitle">The taxonomy underneath, and four cross-cutting observations.</p>
+
+  <h3>6.1&nbsp; Six failure modes, generalized</h3>
+  <p>Each experiment closed a specific scenario, but the underlying patterns generalize. None of them are specific to memory-augmented data-science agents &mdash; they apply to any system with three ingredients: an LLM, a persistent state store, and a finite tool surface.</p>
+
+  <table>
+    <tr><th>Failure mode</th><th>What it is</th><th>Closed by</th></tr>
+    <tr><td>Retrieval mismatch</td><td>Storage keys differ from query forms. Pure-string retrieval misses paraphrase.</td><td><a href="#exp-hybrid">4.3</a></td></tr>
+    <tr><td>Scope leakage</td><td>Tenancy implicit. Each category&rsquo;s filter locally correct; the system as a whole leaks.</td><td><a href="#exp-axis">4.2</a></td></tr>
+    <tr><td>Silent substitution</td><td>Two halves of a contract live in different stores and never cross-check.</td><td><a href="#exp-schema">4.6</a></td></tr>
+    <tr><td>Memorization as eval</td><td>Famous datasets make &ldquo;close enough&rdquo; indistinguishable from &ldquo;reciting.&rdquo; Off-by-1 is the tell.</td><td><a href="#exp-exec">4.4</a> + <a href="#exp-novel">4.5</a></td></tr>
+    <tr><td>Knowledge &ne; execution</td><td>Memory surfaces the rule; tool surface has no way to apply it.</td><td><a href="#exp-exec">4.4</a></td></tr>
+    <tr><td>Aliased contamination</td><td>Versioning relies on identity; plural/singular variants create duplicate active rows.</td><td>upstream <a href="#exp-schema">4.6</a>; downstream <a href="#open">open</a></td></tr>
+  </table>
+
+  <h3>6.2&nbsp; Cross-cutting observations</h3>
+  <ul>
+    <li><strong>The memory layer is one piece of the agent contract; the tool surface is another.</strong> 4.4 was forced because 4.3 alone wasn&rsquo;t enough.</li>
+    <li><strong>Coupling between categories belongs in the manager, not in cross-imports.</strong> 4.6 surfaces the schema gap by composing two stores at retrieval time; neither store imports the other.</li>
+    <li><strong>Eval design carries as much weight as memory design.</strong> 4.5 (novel data) and the two-signal <code class="inl">agree</code> predicate did more for confidence than any single retriever change.</li>
+    <li><strong>The deterministic flow is the rate-limiter for diagnosis.</strong> Because steps 1&ndash;4 and 6&ndash;8 are Python, a regression in retrieval surfaces at the right step rather than hiding inside the LLM call.</li>
+  </ul>
+</section>
+
+<!-- 7 PLAYBOOK -->
+<section id="playbook">
+  <h2><span class="n">7</span>Playbook</h2>
+  <p class="subtitle">Ten rules for the next builder, extracted from the experiments.</p>
+
+  <ol class="play">
+    <li><strong>Declare scoping axes at category birth.</strong> USER / PROJECT / DATASET &times; identity-required / identity-optional / audit / reference. Picking the mix later means rewriting the schema.</li>
+    <li><strong>Pick versioned vs append-only by event-ness.</strong> Definitions version via <code class="inl">valid_to</code>; events are append-only. Don&rsquo;t reach for either reflexively.</li>
+    <li><strong>Hybrid retrieval, merged by max.</strong> Run a string leg <em>and</em> a semantic leg; either signal surfaces the row. Pure-string misses paraphrase; pure-semantic blurs exact names.</li>
+    <li><strong>One relevance gate above the sub-retrievers.</strong> Not per-category. The gate says &ldquo;this query isn&rsquo;t data-shaped &mdash; return nothing.&rdquo;</li>
+    <li><strong>The tool surface must include execution, not just description.</strong> Knowledge in memory is necessary, not sufficient: the agent needs a way to apply what it recalled.</li>
+    <li><strong>Anchor rubrics in ground truth computed from data, not hand-typed.</strong> Use the LLM judge for direction only; magnitude is noisy.</li>
+    <li><strong>Test on data the LLM has never seen.</strong> Off-by-1 in opposite directions is the memorization tell. A seeded synthetic dataset is the cleanest immunization.</li>
+    <li><strong>Surface schema mismatches at retrieval, not after computation.</strong> If a definition needs a column the dataset doesn&rsquo;t have, decorate the result with <code class="inl">applicable: false</code> &mdash; don&rsquo;t let the LLM proxy.</li>
+    <li><strong>Concurrency at the contract layer.</strong> Per-store RLocks + WAL; when stores share a connection, share the lock. Don&rsquo;t paper over <code class="inl">BEGIN within BEGIN</code> at runtime.</li>
+    <li><strong>Honest residuals.</strong> When behaviour is right and a rubric is wrong, fix the rubric only if it&rsquo;s worth optimizing for the measure. Otherwise label it and move on &mdash; the alternative is Goodhart.</li>
+  </ol>
+</section>
+
+<!-- 8 OPEN WORK -->
+<section id="open">
+  <h2><span class="n">8</span>Open work</h2>
+  <p class="subtitle">What we deliberately did not ship, and why.</p>
+
+  <div class="callout warn">
+    <div class="lbl">Auto-extraction (deferred)</div>
+    <p style="margin:6px 0 0">Step 7 of the 8-step flow. An LLM-driven extraction layer would re-introduce non-determinism on the write path; one bad extraction can corrupt a category for the rest of its lifetime &mdash; the aliased-contamination failure mode in <a href="#discussion">&sect;6</a>. Add it only after &ldquo;what gets saved?&rdquo; is reviewable at the contract layer.</p>
+  </div>
+
+  <p><strong>Stem-aware identity normalizer.</strong> Open. <a href="#exp-schema">4.6</a> upstream-relieves the symptom because the LLM no longer feels pressure to save plural variants; the duplicate-row vulnerability remains until the normalizer collapses plural / singular and similar trivial variants.</p>
+  <p><strong>Long-horizon / multi-turn coverage.</strong> Current evals are 2-session pairs (A teaches; B asks). Longer chains (A teaches; B refines; C asks under conflicting constraints) are not exercised. Expect new failure modes around versioning conflict resolution.</p>
+  <p><strong>adv_01 / adv_02 rubric residuals.</strong> Both are parser-level: a regex can&rsquo;t distinguish the LLM&rsquo;s own assertion from a verbatim quote, and a number extractor grabs the wrong cell. Behaviour is verified correct on live re-run and on judge; we preserve the rubric-fail label rather than hand-tune.</p>
+  <p><strong>Categories 6&ndash;9.</strong> <code class="inl">workflow_recipe</code>, <code class="inl">pipeline_decision</code>, <code class="inl">experiment_record</code> are event-style and should re-use the cat-5 append-only pattern. Versioning is not a category; cats 1&ndash;4 already cover that.</p>
+  <p><strong>Dataset-scope drift on writes.</strong> If the LLM forgets to set <code class="inl">dataset_scoped=True</code> when teaching a dataset-specific rule, the row is stored as global and the leak can recur. The retrieval-side fix is shipped; the write-side guard is a prompt-engineering surface.</p>
+</section>
+
+<!-- 9 REFERENCES -->
+<section id="refs">
+  <h2><span class="n">9</span>References</h2>
+  <p class="subtitle">Sources cited inline; each pairs with a numbered footnote chip in the text.</p>
+  <ol class="refs">
+    <li>Yan et al., <em>What We&rsquo;ve Learned From a Year of Building with LLMs</em>, <a href="https://applied-llms.org/" target="_blank" rel="noopener">applied-llms.org</a></li>
+    <li>Park et al., <em>Generative Agents: Interactive Simulacra of Human Behavior</em>, <a href="https://arxiv.org/abs/2304.03442" target="_blank" rel="noopener">arXiv 2304.03442</a> (2023)</li>
+    <li>Packer et al., <em>MemGPT: Towards LLMs as Operating Systems</em>, <a href="https://arxiv.org/abs/2310.08560" target="_blank" rel="noopener">arXiv 2310.08560</a> (2023)</li>
+    <li>Eugene Yan, <em>Patterns for Building LLM-based Systems &amp; Products</em>, <a href="https://eugeneyan.com/writing/llm-patterns/" target="_blank" rel="noopener">eugeneyan.com</a></li>
+    <li>Eugene Yan, <em>Task-Specific LLM Evals that Do &amp; Don&rsquo;t Work</em>, <a href="https://eugeneyan.com/writing/evals/" target="_blank" rel="noopener">eugeneyan.com</a></li>
+    <li>Liu et al., <em>Lost in the Middle: How Language Models Use Long Contexts</em>, <a href="https://arxiv.org/abs/2307.03172" target="_blank" rel="noopener">arXiv 2307.03172</a> (2023)</li>
+  </ol>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Forward-narrative record of memory-layer changes and their measured effect. Claims should be verifiable against <code class="inl">runs.jsonl</code> and the source files; flag any drift. Honest residuals (<code class="inl">adv_01</code> / <code class="inl">adv_02</code> rubric-fail-but-behaviour-correct; the alias normalizer follow-up; long-horizon coverage gaps) are preserved deliberately rather than relabeled.
+  </div>
+</footer>
+
+</body>
+</html>

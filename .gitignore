@@ -1,0 +1,38 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# SQLite databases (demo, eval, runtime)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+
+# Runtime memory store
+.mads/
+
+# Eval run artifacts (generated results, HTML reports)
+eval/results/
+pipeline_reports/
+
+# Generated demo output
+demo_*.out
+
+# Test and baseline run artifacts
+tests/results/
+baseline/results/
+baseline/.venv_python
+
+# macOS
+.DS_Store

@@ -1,0 +1,346 @@
+"""Ground-truth-anchored assertion helpers for the broad EDA eval.
+
+Computes ground-truth values from ``baseline/data/churn_data.csv`` ONCE at
+import time (cached as module-level constants) and exposes reusable
+assertion helpers shaped ``(text: str, expected, ...) -> (bool, reason: str)``
+so the per-scenario rubrics in :mod:`eval.run_with_memory` stay declarative.
+
+All numeric assertions use absolute tolerances (NOT relative): churn rates
+live in the 0-100 range so ``±0.5`` percentage points is the natural
+quantum. Pass an explicit ``tolerance=`` to widen if a scenario needs slop.
+
+These helpers return ``(passed: bool, reason: str)``. The reason names which
+sub-check passed or failed; the runner logs it verbatim.
+
+Ground truth source-of-truth (computed at import time):
+
+    TELCO_CHURN_PCT                  = 26.5370   # 1869 / 7043 * 100
+    TELCO_CONTRACT_VALUES            = ['Month-to-month', 'One year', 'Two year']
+    TELCO_CHURN_BY_CONTRACT_PCT      = {Month-to-month: 42.71, One year: 11.27, Two year: 2.83}
+    TELCO_TOTAL_CHARGES_BLANK_ROWS   = 11
+    TELCO_FIBER_CHURN_PCT            = 41.89
+    TELCO_DSL_CHURN_PCT              = 18.96
+    TELCO_QUALIFIED_CUSTOMER_CHURN   = 21.71   # tenure>12 AND MonthlyCharges>50
+    TELCO_FILTERED_CHURN_BY_CONTRACT = {Month-to-month: 42.71, One year: 11.28, Two year: 2.85}
+                                       # after dropping TotalCharges nulls
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Iterable
+
+import pandas as pd
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+TELCO_CSV_PATH = _REPO_ROOT / "baseline" / "data" / "churn_data.csv"
+
+
+# -----------------------------------------------------------------------------
+# Ground truth — computed once at import time, cached
+# -----------------------------------------------------------------------------
+def _load_telco() -> pd.DataFrame:
+    return pd.read_csv(TELCO_CSV_PATH)
+
+
+_TELCO_DF = _load_telco()
+
+TELCO_ROW_COUNT: int = len(_TELCO_DF)  # 7043
+
+# Churn rate (overall)
+_yes = int((_TELCO_DF["Churn"] == "Yes").sum())
+TELCO_CHURN_RATE: float = _yes / TELCO_ROW_COUNT  # 0.26537...
+TELCO_CHURN_PCT: float = TELCO_CHURN_RATE * 100.0  # 26.537...
+TELCO_NON_CHURN_PCT: float = 100.0 - TELCO_CHURN_PCT  # 73.463...
+
+# Canonical contract values, in count order
+TELCO_CONTRACT_VALUES: list[str] = ["Month-to-month", "One year", "Two year"]
+
+# Churn rate per Contract (percentage points)
+TELCO_CHURN_BY_CONTRACT_PCT: dict[str, float] = {
+    ct: float((g["Churn"] == "Yes").mean() * 100.0)
+    for ct, g in _TELCO_DF.groupby("Contract")
+}
+# {Month-to-month: 42.71, One year: 11.27, Two year: 2.83}
+
+# TotalCharges blanks (rows where TotalCharges is a literal blank string)
+TELCO_TOTAL_CHARGES_BLANK_ROWS: int = int(
+    _TELCO_DF["TotalCharges"].astype(str).str.strip().eq("").sum()
+)  # 11
+
+# Churn rate by InternetService (fiber ~41.89%, DSL ~18.96%)
+_churn_by_internet = {
+    it: float((g["Churn"] == "Yes").mean() * 100.0)
+    for it, g in _TELCO_DF.groupby("InternetService")
+}
+TELCO_FIBER_CHURN_PCT: float = _churn_by_internet["Fiber optic"]  # 41.89
+TELCO_DSL_CHURN_PCT: float = _churn_by_internet["DSL"]  # 18.96
+
+
+def compute_qualified_customer_churn(df: pd.DataFrame | None = None) -> float:
+    """Multi_01 ground truth: among rows where tenure > 12 AND MonthlyCharges > 50,
+    what fraction have Churn == 'Yes'? Returns percent in [0, 100]."""
+    d = _TELCO_DF if df is None else df
+    mask = (d["tenure"] > 12) & (d["MonthlyCharges"] > 50)
+    sub = d[mask]
+    if len(sub) == 0:
+        return 0.0
+    return float((sub["Churn"] == "Yes").mean() * 100.0)
+
+
+def compute_filtered_churn_by_contract(df: pd.DataFrame | None = None) -> dict[str, float]:
+    """Multi_02 ground truth: churn pct per Contract after dropping rows where
+    TotalCharges coerces to NaN. Returns {contract: pct_in_0_100}."""
+    d = _TELCO_DF if df is None else df
+    d2 = d.copy()
+    d2["_tc"] = pd.to_numeric(d2["TotalCharges"], errors="coerce")
+    filt = d2[d2["_tc"].notna()]
+    return {
+        ct: float((g["Churn"] == "Yes").mean() * 100.0)
+        for ct, g in filt.groupby("Contract")
+    }
+
+
+TELCO_QUALIFIED_CUSTOMER_CHURN: float = compute_qualified_customer_churn()  # 21.71
+TELCO_FILTERED_CHURN_BY_CONTRACT: dict[str, float] = compute_filtered_churn_by_contract()
+# {Month-to-month: 42.71, One year: 11.28, Two year: 2.85}
+
+
+# -----------------------------------------------------------------------------
+# Synthetic-sales ground truth (multi_03)
+# -----------------------------------------------------------------------------
+def _compute_synthetic_premium_order_mean_amount() -> float:
+    """Multi_03 ground truth: mean of ``amount`` for rows where
+    ``amount > 300 AND discount_pct < 10`` on the deterministic synthetic
+    sales dataset (seed=42, 120 rows). The dataset is generated by
+    :mod:`eval.synthetic_dataset`; same seed → same value.
+
+    This is computed at import time so the rubric and the runner agree on
+    a single source of truth. As of seed=42: 21 premium-order rows,
+    mean ≈ 399.39.
+    """
+    from eval.synthetic_dataset import generate_synthetic_sales
+
+    df = generate_synthetic_sales()
+    sub = df.query("amount > 300 and discount_pct < 10")
+    if len(sub) == 0:
+        return 0.0
+    return float(sub["amount"].mean())
+
+
+SYNTHETIC_PREMIUM_ORDER_MEAN_AMOUNT: float = (
+    _compute_synthetic_premium_order_mean_amount()
+)  # ≈ 399.39
+
+
+# -----------------------------------------------------------------------------
+# v1.4: loyal-customer count (adv_02_applicable_metric)
+# -----------------------------------------------------------------------------
+def compute_loyal_customer_count(df: pd.DataFrame | None = None) -> int:
+    """adv_02 ground truth: customers with tenure > 36 AND Contract == 'Two year'.
+
+    Returns the integer count of such rows on the Telco churn dataset.
+    Used by the rubric for adv_02_applicable_metric — confirms the LLM
+    actually evaluated the seeded ``loyal_customer`` metric (applicability
+    flagged TRUE) against the bound df instead of guessing.
+    """
+    d = _TELCO_DF if df is None else df
+    return int(((d["tenure"] > 36) & (d["Contract"] == "Two year")).sum())
+
+
+TELCO_LOYAL_CUSTOMER_COUNT: int = compute_loyal_customer_count()
+
+
+# -----------------------------------------------------------------------------
+# Numeric extraction
+# -----------------------------------------------------------------------------
+_PCT_PATTERN = re.compile(r"(\d{1,3}(?:\.\d{1,4})?)\s*%")
+_NUMERIC_PATTERN = re.compile(r"(?<![\w.])(\d{1,4}(?:\.\d{1,4})?)(?![\w])")
+
+
+def extract_percentages(text: str) -> list[float]:
+    """Return every "<num>%" value found in text, as floats."""
+    out: list[float] = []
+    for tok in _PCT_PATTERN.findall(text):
+        try:
+            out.append(float(tok))
+        except ValueError:
+            continue
+    return out
+
+
+def extract_numbers(text: str) -> list[float]:
+    """Return every standalone number (with optional decimal) in text."""
+    out: list[float] = []
+    for tok in _NUMERIC_PATTERN.findall(text):
+        try:
+            out.append(float(tok))
+        except ValueError:
+            continue
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Assertion helpers
+# -----------------------------------------------------------------------------
+def assert_number_matches(
+    text: str,
+    expected: float,
+    *,
+    tolerance: float = 0.5,
+    label: str = "number",
+    treat_as_percent: bool = True,
+) -> tuple[bool, str]:
+    """Is some "<num>%" (or bare number when ``treat_as_percent=False``) in
+    text within ``tolerance`` of ``expected``? Tolerance is absolute, in the
+    same units as ``expected``."""
+    candidates = extract_percentages(text) if treat_as_percent else extract_numbers(text)
+    if not candidates:
+        return False, f"{label}: no candidate numbers found in text"
+    for v in candidates:
+        if abs(v - expected) <= tolerance:
+            return True, (
+                f"{label}: {v}{'%' if treat_as_percent else ''} matches expected "
+                f"{expected}{'%' if treat_as_percent else ''} (±{tolerance})"
+            )
+    closest = min(candidates, key=lambda v: abs(v - expected))
+    return False, (
+        f"{label}: closest candidate {closest}{'%' if treat_as_percent else ''} "
+        f"differs from expected {expected}{'%' if treat_as_percent else ''} by "
+        f"{abs(closest - expected):.3f} (tolerance ±{tolerance})"
+    )
+
+
+def assert_all_values_present(
+    text: str, values: Iterable[str], *, label: str = "values", case_insensitive: bool = True
+) -> tuple[bool, str]:
+    """All listed values must appear (substring) in text."""
+    hay = text.lower() if case_insensitive else text
+    vals = list(values)
+    missing = [v for v in vals if (v.lower() if case_insensitive else v) not in hay]
+    if not missing:
+        return True, f"{label}: all {len(vals)} expected values present"
+    return False, f"{label}: missing {missing} (of {vals})"
+
+
+def assert_no_value_present(
+    text: str, values: Iterable[str], *, label: str = "values", case_insensitive: bool = True
+) -> tuple[bool, str]:
+    """No listed value may appear (substring) in text."""
+    hay = text.lower() if case_insensitive else text
+    vals = list(values)
+    present = [v for v in vals if (v.lower() if case_insensitive else v) in hay]
+    if not present:
+        return True, f"{label}: none of {vals} present (as expected)"
+    return False, f"{label}: unexpectedly found {present}"
+
+
+def assert_pattern_present(
+    text: str, pattern: str, *, label: str = "pattern", flags: int = re.IGNORECASE
+) -> tuple[bool, str]:
+    """Regex must match SOMEWHERE in text."""
+    if re.search(pattern, text, flags):
+        return True, f"{label}: pattern matched"
+    return False, f"{label}: pattern /{pattern}/ not found"
+
+
+def assert_pattern_absent(
+    text: str, pattern: str, *, label: str = "pattern", flags: int = re.IGNORECASE
+) -> tuple[bool, str]:
+    """Regex must NOT match anywhere in text."""
+    m = re.search(pattern, text, flags)
+    if not m:
+        return True, f"{label}: pattern /{pattern}/ correctly absent"
+    return False, f"{label}: unexpected match {m.group(0)!r}"
+
+
+def assert_consistent_numbers(
+    response_a: str,
+    response_b: str,
+    *,
+    tolerance: float = 0.5,
+    label: str = "consistency",
+    treat_as_percent: bool = True,
+) -> tuple[bool, str]:
+    """Pull the candidate set from BOTH responses and check that A's primary
+    figure is within ``tolerance`` of SOME figure in B. "Primary" = the first
+    extracted percentage in A. If A has no percentage, fall back to bare numbers."""
+    a_nums = extract_percentages(response_a) if treat_as_percent else extract_numbers(response_a)
+    b_nums = extract_percentages(response_b) if treat_as_percent else extract_numbers(response_b)
+    if not a_nums:
+        return False, f"{label}: response A has no candidate numbers"
+    if not b_nums:
+        return False, f"{label}: response B has no candidate numbers"
+    a_primary = a_nums[0]
+    for v in b_nums:
+        if abs(v - a_primary) <= tolerance:
+            return True, (
+                f"{label}: A={a_primary} matches B={v} within ±{tolerance}"
+            )
+    closest = min(b_nums, key=lambda v: abs(v - a_primary))
+    return False, (
+        f"{label}: A={a_primary} not within ±{tolerance} of any B value "
+        f"(closest={closest}, diff={abs(closest - a_primary):.3f})"
+    )
+
+
+def count_pattern_hits(text: str, patterns: Iterable[str], *, flags: int = re.IGNORECASE) -> int:
+    """How many distinct patterns match (boolean count, not occurrences)?"""
+    return sum(1 for p in patterns if re.search(p, text, flags))
+
+
+def assert_at_least_n_present(
+    text: str,
+    patterns: Iterable[str],
+    *,
+    n: int,
+    label: str = "patterns",
+    flags: int = re.IGNORECASE,
+) -> tuple[bool, str]:
+    """At least ``n`` of the listed regex patterns must match in text."""
+    ps = list(patterns)
+    matched = [p for p in ps if re.search(p, text, flags)]
+    if len(matched) >= n:
+        return True, (
+            f"{label}: {len(matched)}/{len(ps)} patterns matched (need ≥{n})"
+        )
+    return False, (
+        f"{label}: only {len(matched)}/{len(ps)} patterns matched (need ≥{n}); "
+        f"missing examples: {[p for p in ps if p not in matched][:3]}"
+    )
+
+
+__all__ = [
+    # constants
+    "TELCO_CSV_PATH",
+    "TELCO_ROW_COUNT",
+    "TELCO_CHURN_RATE",
+    "TELCO_CHURN_PCT",
+    "TELCO_NON_CHURN_PCT",
+    "TELCO_CONTRACT_VALUES",
+    "TELCO_CHURN_BY_CONTRACT_PCT",
+    "TELCO_TOTAL_CHARGES_BLANK_ROWS",
+    "TELCO_FIBER_CHURN_PCT",
+    "TELCO_DSL_CHURN_PCT",
+    "TELCO_QUALIFIED_CUSTOMER_CHURN",
+    "TELCO_FILTERED_CHURN_BY_CONTRACT",
+    "TELCO_LOYAL_CUSTOMER_COUNT",
+    "SYNTHETIC_PREMIUM_ORDER_MEAN_AMOUNT",
+    # computers
+    "compute_qualified_customer_churn",
+    "compute_filtered_churn_by_contract",
+    "compute_loyal_customer_count",
+    # extractors
+    "extract_percentages",
+    "extract_numbers",
+    # helpers
+    "assert_number_matches",
+    "assert_all_values_present",
+    "assert_no_value_present",
+    "assert_pattern_present",
+    "assert_pattern_absent",
+    "assert_consistent_numbers",
+    "assert_at_least_n_present",
+    "count_pattern_hits",
+]

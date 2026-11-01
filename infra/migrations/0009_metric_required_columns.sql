@@ -1,0 +1,24 @@
+-- 0009_metric_required_columns: add JSON-encoded required_columns to metric_memory.
+--
+-- v1.4 cross-checks the columns referenced by a stored metric against the
+-- currently-bound df's schema. The applicability decision is encoded as:
+--
+--   * required_columns_json IS NULL  -> "unknown" (assume applicable; legacy rows)
+--   * required_columns_json == '[]' -> explicit "no columns required"
+--                                       (e.g., a row-count metric)
+--   * required_columns_json == '["a","b"]' -> required ⊆ df.columns => applicable
+--
+-- ALTER TABLE ADD COLUMN is the standard SQLite idiom; columns are
+-- nullable by default. We can't IF NOT EXISTS a column add directly, so we
+-- guard idempotency via a PRAGMA check from the Python side -- the inline
+-- migration constant duplicates this SQL with the same guard, and
+-- init_schema() reads either the file or the inline string under the same
+-- check.
+--
+-- This migration is intentionally a no-op SQL file from sqlite's point of
+-- view if the column already exists (the python-side guard skips the ALTER
+-- when ``required_columns_json`` is already in PRAGMA table_info). The
+-- contents of this file are kept here so an out-of-band migration tool
+-- (or a fresh-db init) sees the canonical DDL.
+
+ALTER TABLE metric_memory ADD COLUMN required_columns_json TEXT;

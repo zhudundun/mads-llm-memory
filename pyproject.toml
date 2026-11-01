@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mads"
+version = "0.1.0"
+description = "Memory-augmented data scientist agent (memory layer for ai-data-science-team)."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "langchain-core>=0.3",
+    "langchain-anthropic>=0.3",
+    "sqlite-vec>=0.1.5",
+    "sentence-transformers>=2.7",
+    "pandas>=2.0",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+eval = [
+    "ai-data-science-team",
+]
+
+[project.scripts]
+mads = "mads.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mads"]

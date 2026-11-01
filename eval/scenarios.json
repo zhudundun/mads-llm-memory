@@ -1,0 +1,485 @@
+{
+  "schema_version": "1",
+  "model": "claude-sonnet-4-6",
+  "dataset": "/Users/wang/LLM_memory/baseline/data/churn_data.csv",
+  "notes": "Each scenario is a paired (session_a, session_b) prompt. Baseline expectation: a fresh agent instance for session_b has no access to session_a context, so the observable will reflect default behavior. Once memory is wired in, the observable should change to honor the session_a fact/preference.",
+  "scenarios": [
+    {
+      "id": "loader_01_snake_case",
+      "agent": "loader",
+      "session_a": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv. By the way, I always want column names normalized to snake_case after loading.",
+        "intent": "state a column-naming normalization preference"
+      },
+      "session_b": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv and show me the first 5 rows.",
+        "intent": "request a load+preview that should honor the snake_case preference if memory worked"
+      },
+      "memory_hypothesis": "Session B preview should show snake_case columns (customer_id, monthly_charges, ...) if memory is on; baseline expects original casing (customerID, MonthlyCharges, ...).",
+      "observable": "preview / artifact columns contain 'customer_id' and 'monthly_charges' rather than 'customerID' and 'MonthlyCharges'"
+    },
+    {
+      "id": "loader_02_no_phone_service_null",
+      "agent": "loader",
+      "session_a": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv. Heads-up: in our data the literal string 'No phone service' should be treated as null/NaN, not as a real category.",
+        "intent": "state a dtype/null-inference rule for sentinel string values"
+      },
+      "session_b": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv and report missing-value counts per column.",
+        "intent": "request a missingness report that should reflect the null-coercion rule if memory worked"
+      },
+      "memory_hypothesis": "Session B missingness counts for MultipleLines (and similar) should be elevated if memory is on; baseline expects 0 nulls because 'No phone service' is treated as a normal string value.",
+      "observable": "MultipleLines reported missing count > 0 (specifically ~682) instead of 0"
+    },
+    {
+      "id": "loader_03_drop_pii",
+      "agent": "loader",
+      "session_a": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv. For privacy reasons, we always drop the customerID column on load — it's a PII identifier we never use for modeling.",
+        "intent": "state a columns-to-exclude rule (PII)"
+      },
+      "session_b": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv and list the columns.",
+        "intent": "request column listing that should reflect the drop rule if memory worked"
+      },
+      "memory_hypothesis": "Session B column list should omit customerID if memory is on; baseline expects customerID to be present.",
+      "observable": "returned column list does NOT contain 'customerID'"
+    },
+    {
+      "id": "loader_04_tenure_as_months",
+      "agent": "loader",
+      "session_a": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv. Note that 'tenure' is in months — we always want it parsed as integer months and we usually also want a derived tenure_years column (tenure/12, rounded to 1 decimal).",
+        "intent": "state a derived-column / type-parsing preference"
+      },
+      "session_b": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv and show me the first 3 rows.",
+        "intent": "request a preview that should include the derived tenure_years column if memory worked"
+      },
+      "memory_hypothesis": "Session B should expose a 'tenure_years' column in the artifact if memory is on; baseline expects only the original 'tenure' column.",
+      "observable": "preview contains a 'tenure_years' column with float values"
+    },
+    {
+      "id": "loader_05_total_charges_numeric",
+      "agent": "loader",
+      "session_a": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv. FYI: TotalCharges is read as a string by default because of blank entries for brand-new customers; we always coerce it to numeric with errors='coerce'.",
+        "intent": "state a dtype-coercion quirk to remember"
+      },
+      "session_b": {
+        "prompt": "Load /Users/wang/LLM_memory/baseline/data/churn_data.csv and tell me the dtype of every column.",
+        "intent": "request dtypes that should reflect the numeric coercion if memory worked"
+      },
+      "memory_hypothesis": "Session B should report TotalCharges as float64 if memory is on; baseline expects object/string dtype because of the 11 blank rows.",
+      "observable": "TotalCharges dtype reported as float64 (not object/string)"
+    },
+
+    {
+      "id": "eda_01_contract_typos",
+      "agent": "eda",
+      "session_a": {
+        "prompt": "Quick EDA on this telecom churn data — and FYI in our extract the Contract column sometimes has typos ('Month-to-month', 'month-to-month', 'Month to month' all mean the same thing); please normalize before any aggregation.",
+        "intent": "state a data-quality issue (case/whitespace typos) to normalize"
+      },
+      "session_b": {
+        "prompt": "How many customers are on each contract type?",
+        "intent": "request grouped counts that should merge typo variants if memory worked"
+      },
+      "memory_hypothesis": "Session B should normalize/case-fold Contract before counting if memory is on; baseline reports the raw value distribution exactly as stored (3 canonical values; typos would, if present, show up as extra rows).",
+      "observable": "AI message acknowledges typo-merging step OR groups by a normalized contract column; baseline shows raw groupby with no normalization step"
+    },
+    {
+      "id": "eda_02_churn_definition",
+      "agent": "eda",
+      "session_a": {
+        "prompt": "Run a quick EDA. Definition we always use: churn_rate = count(Churn == 'Yes') / count(*), expressed as a percentage with one decimal place.",
+        "intent": "state a KPI definition (exact churn metric)"
+      },
+      "session_b": {
+        "prompt": "What is the overall churn rate?",
+        "intent": "request the KPI; should match the definition if memory worked"
+      },
+      "memory_hypothesis": "Session B should report churn as a percentage with one decimal (e.g. '26.5%') if memory is on; baseline may report as a raw fraction, four decimals, or with different wording.",
+      "observable": "AI message formats churn as a percentage with exactly one decimal place"
+    },
+    {
+      "id": "eda_03_grouping_preference",
+      "agent": "eda",
+      "session_a": {
+        "prompt": "EDA on this telecom churn data. House style: we ALWAYS slice churn analyses by Contract type AND by tenure bucket (0-12, 13-24, 25-48, 49+ months) — never one without the other.",
+        "intent": "state a grouping/segmentation preference"
+      },
+      "session_b": {
+        "prompt": "Show me how churn varies across customer segments.",
+        "intent": "request a segmentation summary that should use the two-dim grouping if memory worked"
+      },
+      "memory_hypothesis": "Session B should produce a Contract x tenure-bucket churn breakdown if memory is on; baseline likely picks some other slice (e.g. Contract only, or gender) since the preference isn't known.",
+      "observable": "AI message / artifacts contain both 'Contract' and tenure-bucket grouping (with the specific bucket edges 12/24/48)"
+    },
+    {
+      "id": "eda_04_exec_summary_first",
+      "agent": "eda",
+      "session_a": {
+        "prompt": "EDA please. Reporting style I always want: a 3-bullet executive summary first, then the technical details (dtypes, missingness, correlations) under a separate header.",
+        "intent": "state an output-format preference"
+      },
+      "session_b": {
+        "prompt": "Give me a summary of this dataset.",
+        "intent": "request a summary that should follow the exec-first format if memory worked"
+      },
+      "memory_hypothesis": "Session B should open with a 3-bullet exec summary followed by a distinct technical-details section if memory is on; baseline produces an un-templated narrative.",
+      "observable": "AI message begins with a 3-bullet exec summary and has a separate technical-details section"
+    },
+    {
+      "id": "eda_05_followup_finding",
+      "agent": "eda",
+      "session_a": {
+        "prompt": "Quick EDA. Context from last week's analysis: we discovered fiber-optic InternetService customers churn at roughly 2x the rate of DSL customers. I want to keep investigating that thread.",
+        "intent": "state a prior finding to build on"
+      },
+      "session_b": {
+        "prompt": "What should I investigate next on this dataset?",
+        "intent": "request investigation suggestions; should reference the fiber finding if memory worked"
+      },
+      "memory_hypothesis": "Session B suggestions should reference the fiber-vs-DSL finding and propose deeper drill-downs (e.g. tenure, monthly charges among fiber customers) if memory is on; baseline gives generic next-step suggestions.",
+      "observable": "AI message explicitly mentions fiber optic OR DSL OR InternetService as a known prior finding to extend"
+    },
+
+    {
+      "id": "viz_01_horizontal_viridis",
+      "agent": "viz",
+      "session_a": {
+        "prompt": "Plot churn count by contract type. Style preference: I always want horizontal bars with the viridis colormap.",
+        "intent": "state a chart-orientation and palette preference"
+      },
+      "session_b": {
+        "prompt": "Plot the churn count by payment method.",
+        "intent": "request a similar chart that should honor the horizontal-viridis preference if memory worked"
+      },
+      "memory_hypothesis": "Session B should produce a horizontal bar chart using viridis if memory is on; baseline produces whatever default orientation/palette the agent picks (typically vertical bars with default colors).",
+      "observable": "generated code uses orientation='h' (or px.bar with x=count, y=category) AND references 'viridis' as the colorscale"
+    },
+    {
+      "id": "viz_02_log_y_axis",
+      "agent": "viz",
+      "session_a": {
+        "prompt": "Plot the distribution of TotalCharges. Convention: when a numeric range spans more than 100x, I always want a log-scaled y-axis.",
+        "intent": "state an axis-scale rule conditional on dynamic range"
+      },
+      "session_b": {
+        "prompt": "Plot a histogram of MonthlyCharges.",
+        "intent": "request a chart whose range may or may not trigger the rule; should apply log-y if range>100x"
+      },
+      "memory_hypothesis": "Session B should examine the range and apply log y-axis if memory is on (MonthlyCharges spans ~18-120, ratio ~7x, so the rule should NOT fire — testing whether the agent even remembers the conditional rule); ideal observable: AI message explicitly notes the range and decision. Baseline: no mention of the rule at all.",
+      "observable": "generated code or AI message references log scale OR explicitly notes the dynamic-range rule (presence/absence is the signal)"
+    },
+    {
+      "id": "viz_03_exec_minimal",
+      "agent": "viz",
+      "session_a": {
+        "prompt": "Plot churn rate by contract type for the exec deck. For exec charts I always want: a clear title, a one-sentence insight as subtitle, and NO legend (channel info via axis labels).",
+        "intent": "state an audience/format preference"
+      },
+      "session_b": {
+        "prompt": "Make a chart of churn rate by InternetService for the exec deck.",
+        "intent": "request another exec chart that should honor the title+subtitle+no-legend style if memory worked"
+      },
+      "memory_hypothesis": "Session B chart should have a title, a one-sentence subtitle insight, and showlegend=False if memory is on; baseline produces default layout with legend visible and no insight subtitle.",
+      "observable": "generated code sets a non-empty title AND showlegend=False AND includes an insight-style subtitle/annotation"
+    },
+    {
+      "id": "viz_04_contract_color_map",
+      "agent": "viz",
+      "session_a": {
+        "prompt": "Plot churn count by contract type. Standard color encoding we use everywhere: Month-to-month=red, One year=blue, Two year=green. Always.",
+        "intent": "state a categorical color mapping that must be consistent across charts"
+      },
+      "session_b": {
+        "prompt": "Make a stacked bar of payment method on the x-axis with contract type as the color/series.",
+        "intent": "request a different chart that reuses contract as the color dimension; should reuse the same color map if memory worked"
+      },
+      "memory_hypothesis": "Session B should map Month-to-month->red, One year->blue, Two year->green if memory is on; baseline picks default Plotly colors.",
+      "observable": "generated code uses an explicit color_discrete_map (or equivalent) mapping the three contract values to red/blue/green"
+    },
+    {
+      "id": "viz_05_tenure_bucket_grain",
+      "agent": "viz",
+      "session_a": {
+        "prompt": "Plot average MonthlyCharges over tenure. Our standard cohort grain is tenure_bucket (0-12, 13-24, 25-48, 49+ months), NOT raw monthly tenure.",
+        "intent": "state a cohort-grain preference"
+      },
+      "session_b": {
+        "prompt": "Plot the churn rate as a function of tenure.",
+        "intent": "request a tenure-based chart that should bucket if memory worked"
+      },
+      "memory_hypothesis": "Session B x-axis should be the 4 tenure buckets (0-12 / 13-24 / 25-48 / 49+) if memory is on; baseline plots raw monthly tenure on x-axis.",
+      "observable": "generated code creates a tenure_bucket column with edges at 12/24/48 and plots that on the x-axis, NOT raw tenure"
+    },
+
+    {
+      "id": "cons_01_churn_rate_replay",
+      "agent": "eda",
+      "category": "consistency",
+      "session_a": {
+        "prompt": "Quick EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Compute the overall churn rate (churn_rate = count(Churn=='Yes') / total).",
+        "intent": "ask for churn rate (session A)"
+      },
+      "session_b": {
+        "prompt": "Compute the overall churn rate on this dataset.",
+        "intent": "ask for churn rate again in a fresh session"
+      },
+      "memory_hypothesis": "Both sessions should report the same ground-truth churn rate (~26.5%) within ±0.5pp. Memory-aware should be at least as consistent as baseline; baseline may drift in formatting.",
+      "observable": "B response contains a percentage within 0.5pp of 26.5% AND is consistent with A's reported value",
+      "ground_truth_check": "assert_number_matches(text=b_resp, expected=26.5, tolerance=0.5)",
+      "judge_focus": "do both responses agree on method (Yes / total) and the same number?"
+    },
+    {
+      "id": "cons_02_grouping_replay",
+      "agent": "eda",
+      "category": "consistency",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Show me churn rate by Contract type (one row per contract value).",
+        "intent": "ask for churn-by-contract (session A)"
+      },
+      "session_b": {
+        "prompt": "Show me churn rate broken down by Contract type on this dataset.",
+        "intent": "ask the same grouped question in a fresh session"
+      },
+      "memory_hypothesis": "Both sessions should surface all 3 Contract values with consistent percentages: Month-to-month ~42.7%, One year ~11.3%, Two year ~2.8%.",
+      "observable": "B response mentions all 3 Contract values AND at least 2 of the 3 ground-truth percentages within ±1pp",
+      "ground_truth_check": "all 3 contract values present AND ≥2 of {42.7, 11.3, 2.8} within ±1pp",
+      "judge_focus": "do both responses report the same 3 percentages with matching method?"
+    },
+
+    {
+      "id": "learn_01_metric_correction",
+      "agent": "eda",
+      "category": "learning_from_feedback",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Compute churn_rate using my formula: count(Churn=='No') / total. CORRECTION: scratch that — my formula was WRONG. The correct churn_rate is count(Churn=='Yes') / total and the ground truth is 26.5%. Please record the correction.",
+        "intent": "seed an incorrect metric then correct it within the same turn"
+      },
+      "session_b": {
+        "prompt": "Compute the overall churn rate on this dataset.",
+        "intent": "ask for churn rate; should use the corrected formula not the incorrect one"
+      },
+      "memory_hypothesis": "B should report the corrected churn rate ~26.5% (count(Yes)/total), NOT the incorrect 73.5% (count(No)/total). Baseline has no memory of the correction.",
+      "observable": "B response contains a percentage within ±0.5pp of 26.5% AND does NOT report 73.5% as the churn rate",
+      "ground_truth_check": "26.5% present AND 73.5% not asserted as churn rate",
+      "judge_focus": "did memory-aware honor the correction (26.5%, not 73.5%)?"
+    },
+    {
+      "id": "learn_02_dtype_correction",
+      "agent": "eda",
+      "category": "learning_from_feedback",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Describe TotalCharges. CORRECTION: I initially said TotalCharges was numeric, but actually it's stored as object dtype because 11 rows have blank values for brand-new customers — we always coerce with pd.to_numeric(..., errors='coerce'). Please record this data-quality issue.",
+        "intent": "seed a dtype claim then correct it with the coerce step"
+      },
+      "session_b": {
+        "prompt": "Describe the TotalCharges column on this dataset.",
+        "intent": "ask for a TotalCharges description; should mention the 11 nulls AND coerce step"
+      },
+      "memory_hypothesis": "B should mention TotalCharges has 11 missing/blank rows AND that pd.to_numeric with errors='coerce' is the standard handling. Baseline likely reports just dtype='object' with no null awareness.",
+      "observable": "B response mentions '11' (or 'eleven') in the context of nulls/blanks AND mentions 'coerce' or 'to_numeric'",
+      "ground_truth_check": "regex /\\b11\\b/ near null vocab AND regex /coerce|to_numeric/",
+      "judge_focus": "did memory-aware surface both the 11 blanks and the coerce remedy?"
+    },
+
+    {
+      "id": "eff_01_re_spec_avoidance",
+      "agent": "eda",
+      "category": "efficiency",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Five facts to remember about this dataset: (1) Contract values can have case/whitespace typos and must be normalized; (2) tenure is in months; (3) churn means Churn=='Yes'; (4) we always slice by Contract AND tenure bucket together; (5) TotalCharges needs pd.to_numeric coercion because of 11 blank rows. Please record these.",
+        "intent": "seed 5 distinct facts the assistant must remember"
+      },
+      "session_b": {
+        "prompt": "Do a full EDA on this dataset — give me an overview of what's interesting.",
+        "intent": "request a full EDA; should reference seeded facts without re-asking"
+      },
+      "memory_hypothesis": "B should reference at least 4 of the 5 seeded facts (typo normalization, tenure-in-months, Yes-as-churn, Contract+tenure bucket slicing, TotalCharges coercion) without asking clarifying questions.",
+      "observable": "B response matches ≥4 of 5 fact-patterns",
+      "ground_truth_check": "assert_at_least_n_present with 5 fact patterns, n=4",
+      "judge_focus": "did memory-aware avoid re-asking and apply the seeded facts?"
+    },
+    {
+      "id": "eff_02_no_clarifying_q",
+      "agent": "eda",
+      "category": "efficiency",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Definition: in our group, 'revenue' ALWAYS means net revenue = MonthlyCharges * tenure (we don't have returns in this telco data so net=gross here). Please record this metric definition.",
+        "intent": "seed a domain-specific revenue definition"
+      },
+      "session_b": {
+        "prompt": "What's the revenue trend on this dataset?",
+        "intent": "ask for revenue; should not ask clarifying questions and should use the seeded definition"
+      },
+      "memory_hypothesis": "B should apply the MonthlyCharges*tenure definition (or explicitly cite 'net revenue') WITHOUT asking what 'revenue' means. Baseline likely asks for clarification or invents a different definition.",
+      "observable": "B response does NOT contain clarifying-question vocab AND mentions 'net revenue' or 'MonthlyCharges*tenure'",
+      "ground_truth_check": "assert_pattern_absent for clarifying-Q vocab AND assert_pattern_present for net-revenue/MonthlyCharges*tenure",
+      "judge_focus": "did memory-aware honor the seeded definition without asking clarifying questions?"
+    },
+
+    {
+      "id": "cross_01_no_bleed",
+      "agent": "eda",
+      "category": "cross_dataset_isolation",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Preference: for THIS dataset, ALWAYS rename customerID to customer_id when loading — this rule is specific to the churn data only. Please record this preference as scoped to this dataset.",
+        "intent": "seed a dataset-scoped rename preference on the CHURN dataset"
+      },
+      "session_b": {
+        "prompt": "EDA on {SYNTHETIC_CSV}. Describe the columns and what's interesting.",
+        "intent": "ask about a DIFFERENT (synthetic) dataset; the customerID rename should not bleed"
+      },
+      "memory_hypothesis": "B should describe the synthetic dataset's actual columns (order_id, product_category, customer_segment, amount, order_date, region, discount_pct) and NOT mention customerID/customer_id (which don't exist in the synthetic dataset).",
+      "observable": "B response mentions ≥3 synthetic columns AND does NOT mention customerID/customer_id",
+      "ground_truth_check": "assert_no_value_present for ['customerID', 'customer_id'] AND ≥3 synthetic column names present",
+      "judge_focus": "did memory-aware describe the actual synthetic dataset without bleeding churn-specific preferences?"
+    },
+    {
+      "id": "cross_02_dataset_recognition",
+      "agent": "eda",
+      "category": "cross_dataset_isolation",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Give me an overview of contract types and churn patterns.",
+        "intent": "register churn-dataset semantics (contract, churn)"
+      },
+      "session_b": {
+        "prompt": "EDA on {SYNTHETIC_CSV}. Give me an overview of this dataset.",
+        "intent": "ask about the synthetic sales dataset; response should describe sales schema, not churn"
+      },
+      "memory_hypothesis": "B should describe the synthetic sales dataset's actual columns and not parrot churn-dataset terminology (Contract, Churn, MonthlyCharges, tenure).",
+      "observable": "B response mentions ≥3 synthetic columns (order_id, product_category, customer_segment, amount, order_date, region, discount_pct) AND does NOT mention >1 churn-specific term",
+      "ground_truth_check": "≥3 synthetic columns AND ≤1 churn-only term (Contract/Churn/tenure/MonthlyCharges)",
+      "judge_focus": "does memory-aware correctly recognize this is a different dataset and describe sales semantics?"
+    },
+    {
+      "id": "cross_03_project_isolation",
+      "agent": "eda",
+      "category": "cross_dataset_isolation",
+      "session_a": {
+        "project_id": "project_alpha",
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Preference: for this PROJECT (project_alpha), ALWAYS treat MonthlyCharges as USD and round to whole dollars in summaries. Please record this preference as project-scoped.",
+        "intent": "seed a project-scoped preference in project_alpha"
+      },
+      "session_b": {
+        "project_id": "project_beta",
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Summarize MonthlyCharges distribution.",
+        "intent": "ask same dataset in a different project — the USD-rounding rule should NOT bleed"
+      },
+      "memory_hypothesis": "B should describe MonthlyCharges normally (cents, two decimals) without applying the project_alpha-scoped rounding rule.",
+      "observable": "B response does NOT mention 'rounded to whole dollars' or 'USD whole dollar' phrasing",
+      "ground_truth_check": "assert_no_value_present for ['rounded to whole', 'whole dollar', 'whole-dollar', 'no cents']",
+      "judge_focus": "did memory-aware B describe MonthlyCharges without applying the alpha-only rounding rule?"
+    },
+
+    {
+      "id": "multi_01_chained_metric",
+      "agent": "eda",
+      "category": "multi_step",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Definition to remember: qualified_customer = tenure > 12 months AND MonthlyCharges > 50. Please record this metric definition.",
+        "intent": "seed a compound filter definition"
+      },
+      "session_b": {
+        "prompt": "What percent of qualified customers churn on this dataset?",
+        "intent": "ask a question that requires applying the seeded filter then computing churn"
+      },
+      "memory_hypothesis": "B should compute the churn rate on the qualified subset (tenure>12 AND MonthlyCharges>50): ground truth ~21.7%. Baseline may compute overall churn (~26.5%) or ask for the filter.",
+      "observable": "B response contains a percentage within ±2pp of 21.7%",
+      "ground_truth_check": "assert_number_matches(expected=21.7, tolerance=2.0)",
+      "judge_focus": "did memory-aware apply the qualified_customer filter and report ~21.7%?"
+    },
+    {
+      "id": "multi_02_filter_plus_groupby",
+      "agent": "eda",
+      "category": "multi_step",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Data-quality rule: ALWAYS exclude customers whose TotalCharges is blank (11 rows on this dataset) before computing any aggregate. Please record this data-quality issue.",
+        "intent": "seed a row-exclusion filter rule"
+      },
+      "session_b": {
+        "prompt": "Show me churn rate by Contract type on this dataset, applying valid data only.",
+        "intent": "ask for a grouped metric that requires applying the seeded filter"
+      },
+      "memory_hypothesis": "B should report churn-by-Contract after filtering: Month-to-month ~42.7%, One year ~11.3%, Two year ~2.85%. Baseline may not filter and may report slightly different rates from the unfiltered total.",
+      "observable": "B response reports all 3 contract values AND ≥2 of {42.7, 11.3, 2.85} within ±1pp",
+      "ground_truth_check": "all 3 contract values + ≥2 of 3 percentages within ±1pp",
+      "judge_focus": "did memory-aware apply the filter and report the 3 post-filter rates?"
+    },
+    {
+      "id": "multi_03_synthetic_filter",
+      "agent": "eda",
+      "category": "multi_step",
+      "session_a": {
+        "prompt": "EDA on {SYNTHETIC_CSV}. Definition to remember: premium_order = amount > 300 AND discount_pct < 10. Please record this metric definition.",
+        "intent": "seed a compound filter on the synthetic sales dataset (LLM has NEVER seen this data)"
+      },
+      "session_b": {
+        "prompt": "What's the mean order amount for premium_order rows on this dataset?",
+        "intent": "force the LLM to compute on novel data — no training-data recall possible"
+      },
+      "memory_hypothesis": "B should call run_pandas_code to apply premium_order filter and compute mean amount on the filtered subset. Without the tool, the LLM would have nothing to recall and would either guess or refuse.",
+      "observable": "B response contains the correct mean amount within ±$5 of ground truth",
+      "ground_truth_check": "assert_number_matches against SYNTHETIC_PREMIUM_ORDER_MEAN_AMOUNT (compute from eval/synthetic_dataset.py at import time)",
+      "judge_focus": "did memory-aware compute the correct mean amount using the recorded filter?"
+    },
+
+    {
+      "id": "adv_01_ambiguous_term",
+      "agent": "eda",
+      "category": "adversarial_disambiguation",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Definition we use: active_user = made a payment in the last 30 days (i.e., recent paying customer); NOT just 'someone who signed up'. Please record this metric definition.",
+        "intent": "seed an ambiguous-term definition (payment-recency, not signup)"
+      },
+      "session_b": {
+        "prompt": "How many active users do we have on this dataset, broken down by Contract type?",
+        "intent": "ask using the ambiguous term; B should use the payment-recency definition"
+      },
+      "memory_hypothesis": "B should reference the payment-recency definition (mentions 'paid', 'payment', 'recent payment', or 'transaction') and NOT use the 'signed up' interpretation.",
+      "observable": "B response matches /paid|payment|recent\\s+(payment|transaction)/ AND does NOT match /signed?\\s*up/",
+      "ground_truth_check": "assert_pattern_present for payment vocab AND assert_pattern_absent for signed-up vocab",
+      "judge_focus": "did memory-aware use A's payment-recency definition, not a reinvented signup definition?"
+    },
+
+    {
+      "id": "adv_02_applicable_metric",
+      "agent": "eda",
+      "category": "adversarial_disambiguation",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. Definition we use: loyal_customer = tenure > 36 AND Contract = 'Two year'. Please record this metric definition with required_columns specified.",
+        "intent": "seed an applicable metric (both columns exist in churn_data)"
+      },
+      "session_b": {
+        "prompt": "How many loyal customers do we have, broken down by InternetService?",
+        "intent": "ask using the term; metric should be APPLICABLE; LLM should compute correctly"
+      },
+      "memory_hypothesis": "B should retrieve loyal_customer (APPLICABLE: true), call run_pandas_code to apply the filter, and report counts by InternetService.",
+      "observable": "B response contains a number; LLM uses run_pandas_code; the response cites [memory:metric:loyal_customer]; no 'APPLICABLE: false' surfaced.",
+      "ground_truth_check": "assert_number_matches against TELCO_LOYAL_CUSTOMER_COUNT (compute deterministically from churn_data)",
+      "judge_focus": "did memory-aware use the seeded metric and compute the right counts?"
+    },
+
+    {
+      "id": "neg_01_unrelated_query",
+      "agent": "eda",
+      "category": "negative",
+      "session_a": {
+        "prompt": "EDA on /Users/wang/LLM_memory/baseline/data/churn_data.csv. House style: column names always in snake_case; churn means Churn=='Yes'. Please record these preferences.",
+        "intent": "seed unrelated preferences"
+      },
+      "session_b": {
+        "prompt": "Write me a short poem about telecoms.",
+        "intent": "ask an unrelated creative question; no memory should be cited"
+      },
+      "memory_hypothesis": "B should produce a poem WITHOUT citing any memory blocks ([memory:...]) and WITHOUT the memory layer injecting irrelevant preferences. memories_injected count should be ≤1 (only the dataset context is acceptable; no preferences/metrics fired).",
+      "observable": "B response contains NO '[memory:' citations AND memories_injected_count ≤ 1",
+      "ground_truth_check": "assert_pattern_absent /\\[memory:/ AND memories_injected_count ≤ 1",
+      "judge_focus": "did memory-aware correctly NOT cite irrelevant memories for a creative query?"
+    }
+  ]
+}
